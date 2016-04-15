@@ -1,0 +1,98 @@
+#!/usr/bin/env python
+
+import os
+import sys
+import time
+
+class ImagetoolError(Exception):
+    pass
+
+def _tran2docker(image_file, image_name, location):
+    i = 0
+    while i < 20:    
+        for i in range(16):
+            cmd1 = "qemu-nbd -c /dev/nbd%s %s" % (i, image_file)
+            cmd2 = "mount /dev/nbd%sp1 %s" % (i, location)
+            #print cmd1, cmd2
+            rs1 = os.system(cmd1)
+            rs2 = os.system(cmd2) 
+            if rs1 == 0 and rs2 == 0:
+                #image_id = str(image_id)
+                f = open(location + "/Dockerfile","w")
+                f.write("FROM scratch\nADD . /\nRUN mkdir /var/run/sshd\nRUN \
+						 rm Dockerfile\nCMD [\"/usr/sbin/sshd\", \"-D\"]\n")
+                f.close()
+                cmd = "docker build -t %s " % image_name + location + ' >2'
+                #print cmd
+                os.system(cmd)
+                cmd = "rm " + location + "/Dockerfile &&  umount /dev/nbd%sp1" % i + \
+				      " && qemu-nbd -d /dev/nbd%s >2" % i
+                #print cmd
+                os.system(cmd)
+                return 0
+            if rs1 == 0:
+                cmd = "qemu-nbd -d /dev/nbd%s >2" % i
+                #print cmd
+                os.system(cmd)
+        time.sleep(5)
+    if i == 20:
+        #print('convert image failed')
+        os.system("rm -rf %s" % location)
+        raise ImagetoolError('docker build failed with file %s' % image_file)
+
+def _upload_to_registry(image_name, registry_url):
+    #print 'in upload'
+    cmd = "docker tag %s %s/%s" % (image_name, registry_url, image_name) + \
+	  " && docker push %s/%s" % (registry_url, image_name)
+    if 0 != os.system(cmd):
+            raise ImagetoolError('cannot upload to registry %s' % registry_url)
+
+def _save_img(img_file, registry_url, image_name):
+    #print 'in save'
+    name = img_file + '.tar'
+    cmd = "docker save -o %s %s && docker rmi -f %s/%s  %s" % \
+    	   (name, image_name, registry_url, image_name, image_name)
+    if 0 != os.system(cmd):
+        raise ImagetoolError('cannot save image in file %s' % img_file)
+
+def _check_nbd_module():
+    if not os.path.exists("/dev/nbd0"):
+        if 0 != os.system("modprobe nbd max_part=16"):
+            #print('cannot modprobe nbd module')
+            raise ImagetoolError('cannot modprobe nbd module')
+            sys.exit(1)
+
+def usage():
+    print(sys.argv[0] + " convert image_file image_name location")
+    print(sys.argv[0] + " upload image_name registry_url")
+    print(sys.argv[0] + " save img_file registry_url image_name")
+    sys.exit(1)
+
+def main(argv=None):
+    if argv is None:
+        argv = sys.argv
+    if len(argv) < 2:
+        usage()
+
+    _check_nbd_module()
+    
+    if argv[1] == 'convert':
+        if len(argv) != 5:
+            usage()
+        _tran2docker(argv[2], argv[3], argv[4])
+
+    elif argv[1] == 'upload':
+        if len(argv) != 4:
+            usage()
+        _upload_to_registry(argv[2], argv[3])
+        
+    elif argv[1] == 'save':
+        if len(argv) != 5:
+            usage()
+        _save_img(argv[2], argv[3], argv[4])
+    else:
+        usage()
+    return 0
+# 
+# if __name__ == '__main__':
+#     sys.exit(main())   		

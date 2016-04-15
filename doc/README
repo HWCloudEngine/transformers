@@ -1,0 +1,39 @@
+##########################
+## install   guide      ##
+##########################
+# execute /tools/install.sh
+sh tools/install.sh <transformers-api or transformers-gateway or transformers-all>
+
+
+
+#####################################
+####   register cmd            ######
+####                           ######
+#####################################
+#2. register transformers service as following steps (username/password/ip using your actual scene)
+#2.1 V2V api service register
+#register the user of transformers service 
+keystone user-create --name=transformers --pass=Huawei123 --email=admin@example.com
+
+#register transformers user and tenant relation (eg: service Tenant / admin Role)
+keystone user-role-add --user=transformers --tenant=service --role=admin
+
+#register transformers service 
+keystone service-create --name=transformers --type=hybrid --description="Hybrid vm manager"
+
+#register transformers endpoint
+keystone endpoint-create --region=RegionOne --service-id=$(keystone service-list | awk '/ transformers / {print $2}') --publicurl=http://192.210.10.15:9999/v1/$\(tenant_id\)s --adminurl=http://192.210.10.15:9999/v1/$\(tenant_id\)s  --internalurl=http://192.210.10.15:9999/v1/$\(tenant_id\)s
+
+#2.2 register transformers gateway api service
+
+#register transformers service 
+keystone service-create --name=transformersGateWay --type=transformersGateWay --description="transformers gateway service"
+
+#register transformers endpoint
+keystone endpoint-create --region=RegionOne --service-id=$(keystone service-list | awk '/ transformersGateWay / {print $2}') --publicurl=http://192.210.10.15:9998/v1/$\(tenant_id\)s --adminurl=http://192.210.10.15:9998/v1/$\(tenant_id\)s  --internalurl=http://192.210.10.15:9998/v1/$\(tenant_id\)s
+
+#3. start transformers api service 
+/usr/local/bin/transformers-api --config-file /etc/transformers/hybrid-transformers.conf & 
+
+#4. start transformers gateway service
+/usr/local/bin/transformers-gateway --config-file /etc/transformers/hybrid-transformers.conf & 

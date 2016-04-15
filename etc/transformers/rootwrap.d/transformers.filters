@@ -1,0 +1,9 @@
+# transformers-rootwrap command filters for transformers
+# This file should be owned by (and only-writeable by) the root user
+
+[Filters]
+# transformers/brick/base.py: 
+image2docker: CommandFilter, image2docker, root
+ls: CommandFilter, ls, root
+mkdir: CommandFilter, mkdir, root
+rm: CommandFilter, rm, root

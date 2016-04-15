@@ -1,0 +1,106 @@
+#!/usr/bin/env python
+
+import os, sys, uuid, time
+#, threading 
+
+def tran2docker(image_file, image_name, location):
+	#time.sleep(10)
+	#img_location = image_file #"/opt/stack/data/glance/images/a37196f0-33ac-4622-82e1-3a2d349e826d"
+	#location = "/tmp/" + str(uuid.uuid4()) #"/tmp/a37196f0-33ac-4622-82e1-3a2d349e826d"
+	#image_name = image_name.lower()
+	#print location, image_name
+	#os.system("mkdir -p "+location)
+	#sys.exit()
+	for i in range(16):
+		cmd1 = "qemu-nbd -c /dev/nbd%s %s" % (i, image_file)
+		cmd2 = "mount /dev/nbd%sp1 %s" % (i, location)
+		#print cmd1, cmd2
+		rs1 = os.system(cmd1)
+		rs2 = os.system(cmd2) 
+		if rs1 == 0 and rs2 == 0:
+			#image_id = str(image_id)
+			f = open(location + "/Dockerfile","w")
+			f.write("FROM scratch\nADD . /\nRUN mkdir /var/run/sshd\nRUN \
+					 rm Dockerfile\nCMD [\"/usr/sbin/sshd\", \"-D\"]\n")
+			f.close()
+			cmd = "docker build -t %s " % image_name + location
+			#print cmd
+			os.system(cmd)
+			cmd = "rm " + location + "/Dockerfile &&  umount /dev/nbd%sp1" % i + \
+			      " && qemu-nbd -d /dev/nbd%s" % i
+			#print cmd
+			os.system(cmd)
+			return 1
+		if rs1 == 0:
+		    cmd = "qemu-nbd -d /dev/nbd%s" % i
+		    #print cmd
+		    os.system(cmd)
+	return 0
+
+def _upload_to_registry(image_name, registry_url):
+    #print 'in upload'
+    cmd = "docker tag %s %s/%s" % (image_name, registry_url, image_name) + \
+	  " && docker push %s/%s" % (registry_url, image_name)
+    os.system(cmd)
+
+def _save_img(img_file, registry_url, image_name):
+    #print 'in save'
+    name = img_file + '.tar'
+    cmd = "docker save -o %s %s && docker rmi -f %s/%s  %s" % \
+    	   (name, image_name, registry_url, image_name, image_name)
+    os.system(cmd)
+
+def usage():
+    print(sys.argv[0] + 
+    	  " upload_docker [filename.tar/des_img_name] [destination:url]")
+    sys.exit(1)
+
+def main(argv=None):
+    if argv is None:
+        argv = sys.argv
+    if len(argv) < 6:
+        usage()
+	print('args wrong')
+        sys.exit(1)
+    #s = {'registry':'%s:10000/%s' % (argv[3], argv[4])}
+    #print(s)
+    #exit()
+    #import pdb
+    #pdb.set_trace()
+
+    if not os.path.exists("/dev/nbd0"):
+        if 0 != os.system("modprobe nbd max_part=16"):
+            print('cannot modprobe nbd module')
+	    sys.exit(1)
+
+    location = "/tmp/" + str(uuid.uuid4()) #"/tmp/a37196f0-33ac-4622-82e1-3a2d349e826d"
+    os.system("mkdir -p"+location)
+    #print location
+    i=0
+    while i < 24:
+	if 0 != tran2docker(argv[2], argv[4], location):
+       	    break
+        time.sleep(5)
+    if i == 24:
+        print 'convert image failed'
+	sys.exit(1)
+    if len(argv[3]) != 'None':
+        try:
+	    cmd = "docker tag %s %s/%s" % (argv[4], argv[3], argv[4]) + \
+	          " && docker push %s/%s" % (argv[3], argv[4])
+            os.system(cmd)
+	except Exception:
+            print('cannot upload to registry')
+	    sys.exit(1)
+#        _upload_to_registry(argv[4], argv[3])
+#        print('%s:10000/%s' % (argv[3], argv[4]))
+    os.system("rm %s" % argv[2])
+    #print argv[5]=='True'
+    if argv[5] == 'True':
+        try:
+	    _save_img(argv[2], argv[3], argv[4])
+	except Exception:
+            print('cannot save image for upload')
+	    sys.exit(1)
+    os.system("rm -rf %s" % location)
+    print('success finish image convert')
